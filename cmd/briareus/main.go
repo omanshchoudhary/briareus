@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"github.com/omanshchoudhary/briareus/internal/probe"
@@ -24,19 +25,28 @@ func main() {
 
 	var wg sync.WaitGroup
 	errs := make(chan error, len(files))
+	jobs := make(chan string)
 
-	for _, file := range files {
+	workers := runtime.NumCPU()
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			output := filepath.Join("out/transcoded", filepath.Base(file))
-			if err := transcode.Segment(file, output); err != nil {
-				errs <- err
-				return
+			for file := range jobs {
+				output := filepath.Join("out/transcoded", filepath.Base(file))
+				if err := transcode.Segment(file, output); err != nil {
+					errs <- err
+					continue
+				}
+				fmt.Println("done", output)
 			}
-			fmt.Println("done", output)
 		}()
 	}
+
+	for _, file := range files {
+		jobs <- file
+	}
+	close(jobs)
 	wg.Wait()
 	close(errs)
 
